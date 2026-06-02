@@ -1,29 +1,46 @@
-# Agency Desk MVP
+# Agency Desk
 
-A simple Asana-style project management MVP built with Next.js, Supabase, and plain CSS.
+Agency Desk is an Asana-inspired project management workspace for agency teams. It focuses on the daily work surface: projects, task views, comments, approvals, workload, and planning.
 
-## Features included
+## Features
 
-- Email/password signup and login
-- Auto-create first workspace
-- Create multiple workspaces
-- Create projects
-- Asana-inspired project dashboard
-- Project cards and portfolio view
-- Create tasks
-- Kanban-style task board
-- List-style task view
-- Task detail drawer
-- Task status update
-- Task priority and due date
-- Secure database with Supabase Row Level Security
-- Ready for Vercel deployment
+- Workspace sidebar with project switching and client context
+- Kanban board with drag-and-drop status changes
+- List, timeline, calendar, and workload views
+- Task detail drawer with status, owner, due date, priority, subtasks, activity, and comments
+- Quick task creation modal
+- Search plus status and priority filters
+- Local browser persistence through `localStorage`
+- Responsive layout for desktop, tablet, and mobile
 
-## Required Vercel environment variables
+## Tech Stack
+
+- React
+- Vite
+- Lucide React icons
+- Plain CSS
+
+## Run Locally
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+npm install
+npm run dev
 ```
 
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` also works if you use the older Supabase key name.
+## Production Build
+
+```bash
+npm run build
+npm run preview
+```
+
+## Deploy
+
+This project can be deployed to Vercel, Netlify, or GitHub Pages. For Vercel/Netlify, use:
+
+- Build command: `npm run build`
+- Output directory: `dist`
+
+## Notes
+
+This is not affiliated with Asana and does not copy Asana branding or proprietary assets. It provides a similar agency project-management workflow with original UI, data, and styling.
