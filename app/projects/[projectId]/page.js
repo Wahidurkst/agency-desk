@@ -1,52 +1,54 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { ArrowLeft, CalendarDays, CheckCircle2, Columns3, ListChecks, Plus, Search, SlidersHorizontal, Sparkles, Trash2, X } from 'lucide-react'
 import AppShell from '@/components/AppShell'
-import EmptyState from '@/components/EmptyState'
 import TaskBoard from '@/components/TaskBoard'
 import { priorities, taskStatuses } from '@/lib/constants'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function ProjectPage() {
-  const router = useRouter()
   const params = useParams()
+  const router = useRouter()
   const projectId = params.projectId
-
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [project, setProject] = useState(null)
+  const [workspace, setWorkspace] = useState(null)
   const [tasks, setTasks] = useState([])
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [status, setStatus] = useState('todo')
-  const [priority, setPriority] = useState('medium')
-  const [dueDate, setDueDate] = useState('')
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState('board')
+  const [query, setQuery] = useState('')
+  const [selectedTask, setSelectedTask] = useState(null)
+  const [message, setMessage] = useState('')
+  const [taskForm, setTaskForm] = useState({
+    title: '',
+    description: '',
+    status: 'todo',
+    priority: 'medium',
+    due_date: ''
+  })
 
   useEffect(function () {
-    initialize()
+    init()
   }, [projectId])
 
-  async function initialize() {
-    setLoading(true)
-    setError('')
+  async function init() {
+    var sessionResult = await supabase.auth.getSession()
+    var session = sessionResult.data.session
 
-    var authResult = await supabase.auth.getUser()
-
-    if (!authResult.data || !authResult.data.user) {
+    if (!session) {
       router.replace('/login')
       return
     }
 
-    setUser(authResult.data.user)
-    await loadProject()
+    setUser(session.user)
+    await fetchProject()
     setLoading(false)
   }
 
-  async function loadProject() {
+  async function fetchProject() {
     var projectResult = await supabase
       .from('projects')
       .select('*')
@@ -54,219 +56,279 @@ export default function ProjectPage() {
       .single()
 
     if (projectResult.error) {
-      setError(projectResult.error.message)
+      setMessage(projectResult.error.message)
       return
     }
 
     setProject(projectResult.data)
-    await loadTasks(projectResult.data.id)
+
+    var workspaceResult = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('id', projectResult.data.workspace_id)
+      .single()
+
+    if (!workspaceResult.error) {
+      setWorkspace(workspaceResult.data)
+    }
+
+    await fetchTasks(projectResult.data.workspace_id)
   }
 
-  async function loadTasks(currentProjectId) {
-    var taskResult = await supabase
+  async function fetchTasks(workspaceId) {
+    var result = await supabase
       .from('tasks')
       .select('*')
-      .eq('project_id', currentProjectId)
+      .eq('project_id', projectId)
+      .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
 
-    if (taskResult.error) {
-      setError(taskResult.error.message)
+    if (result.error) {
+      setMessage(result.error.message)
       return
     }
 
-    setTasks(taskResult.data || [])
+    setTasks(result.data || [])
   }
 
-  async function handleCreateTask(event) {
-    event.preventDefault()
+  function handleFieldChange(field, value) {
+    setTaskForm(function (previous) {
+      return Object.assign({}, previous, { [field]: value })
+    })
+  }
 
-    if (!project || !user || !title.trim()) {
+  async function createTask(event) {
+    event.preventDefault()
+    setMessage('')
+
+    if (!taskForm.title.trim() || !project || !user) {
+      setMessage('Please add a task title first.')
       return
     }
 
-    setSaving(true)
-    setError('')
-
-    var taskResult = await supabase
+    var result = await supabase
       .from('tasks')
       .insert({
         workspace_id: project.workspace_id,
         project_id: project.id,
-        title: title.trim(),
-        description: description.trim(),
-        status: status,
-        priority: priority,
-        due_date: dueDate || null,
-        assignee_id: user.id,
+        title: taskForm.title.trim(),
+        description: taskForm.description.trim(),
+        status: taskForm.status,
+        priority: taskForm.priority,
+        due_date: taskForm.due_date || null,
         created_by: user.id
       })
-      .select('*')
+      .select()
       .single()
 
-    if (taskResult.error) {
-      setError(taskResult.error.message)
-      setSaving(false)
+    if (result.error) {
+      setMessage(result.error.message)
       return
     }
 
-    setTasks([taskResult.data].concat(tasks))
-    setTitle('')
-    setDescription('')
-    setStatus('todo')
-    setPriority('medium')
-    setDueDate('')
-    setSaving(false)
+    setTaskForm({ title: '', description: '', status: 'todo', priority: 'medium', due_date: '' })
+    await fetchTasks(project.workspace_id)
   }
 
-  async function handleMoveTask(taskId, nextStatus) {
-    var updateResult = await supabase
+  async function moveTask(taskId, status) {
+    if (!project) {
+      return
+    }
+
+    var result = await supabase
       .from('tasks')
-      .update({
-        status: nextStatus,
-        updated_at: new Date().toISOString()
-      })
+      .update({ status: status, updated_at: new Date().toISOString() })
       .eq('id', taskId)
-      .select('*')
-      .single()
 
-    if (updateResult.error) {
-      setError(updateResult.error.message)
+    if (result.error) {
+      setMessage(result.error.message)
       return
     }
 
-    setTasks(tasks.map(function (task) {
-      if (task.id === taskId) {
-        return updateResult.data
-      }
-
-      return task
-    }))
+    await fetchTasks(project.workspace_id)
   }
 
-  async function handleDeleteTask(taskId) {
-    var shouldDelete = window.confirm('Delete this task?')
-
-    if (!shouldDelete) {
+  async function deleteTask(taskId) {
+    if (!project) {
       return
     }
 
-    var deleteResult = await supabase.from('tasks').delete().eq('id', taskId)
+    var result = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId)
 
-    if (deleteResult.error) {
-      setError(deleteResult.error.message)
+    if (result.error) {
+      setMessage(result.error.message)
       return
     }
 
-    setTasks(tasks.filter(function (task) {
-      return task.id !== taskId
-    }))
+    if (selectedTask && selectedTask.id === taskId) {
+      setSelectedTask(null)
+    }
+
+    await fetchTasks(project.workspace_id)
   }
+
+  function getStatusLabel(key) {
+    var item = taskStatuses.find(function (status) { return status.key === key })
+    return item ? item.label : key
+  }
+
+  function getPriorityLabel(key) {
+    var item = priorities.find(function (priority) { return priority.key === key })
+    return item ? item.label : key
+  }
+
+  var filteredTasks = useMemo(function () {
+    if (!query.trim()) {
+      return tasks
+    }
+
+    return tasks.filter(function (task) {
+      var text = (task.title + ' ' + (task.description || '')).toLowerCase()
+      return text.indexOf(query.toLowerCase()) !== -1
+    })
+  }, [tasks, query])
+
+  var completedTasks = tasks.filter(function (task) { return task.status === 'done' }).length
+  var progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0
 
   if (loading) {
-    return <div className="loading-screen">Loading project...</div>
+    return <div className="center-screen">Loading project...</div>
+  }
+
+  if (!project) {
+    return <div className="center-screen">Project not found.</div>
   }
 
   return (
-    <AppShell user={user}>
-      <div className="topbar">
-        <div>
-          <Link href="/dashboard" className="muted">Back to dashboard</Link>
-          <h1>{project ? project.name : 'Project'}</h1>
-          <p>{project && project.description ? project.description : 'Create and manage project tasks.'}</p>
+    <AppShell user={user} active="projects">
+      <div className="project-page-shell">
+        <div className="project-hero">
+          <div>
+            <Link className="back-link" href="/dashboard"><ArrowLeft size={16} /> Back to dashboard</Link>
+            <div className="project-title-row">
+              <div className="project-avatar-large">{project.name.charAt(0).toUpperCase()}</div>
+              <div>
+                <div className="breadcrumb-line">{workspace ? workspace.name : 'Workspace'} / Project</div>
+                <h1>{project.name}</h1>
+                <p>{project.description || 'Plan, assign, track and complete this project.'}</p>
+              </div>
+            </div>
+          </div>
+          <div className="project-health-card">
+            <span>Progress</span>
+            <strong>{progress}%</strong>
+            <div className="project-progress-bar"><span style={{ width: progress + '%' }} /></div>
+            <p>{completedTasks} of {tasks.length} tasks complete</p>
+          </div>
+        </div>
+
+        {message ? <div className="message error-message">{message}</div> : null}
+
+        <div className="project-tabs">
+          <button className={viewMode === 'board' ? 'tab-btn active' : 'tab-btn'} onClick={function () { setViewMode('board') }} type="button">
+            <Columns3 size={16} /> Board
+          </button>
+          <button className={viewMode === 'list' ? 'tab-btn active' : 'tab-btn'} onClick={function () { setViewMode('list') }} type="button">
+            <ListChecks size={16} /> List
+          </button>
+          <button className="tab-btn disabled" type="button"><CalendarDays size={16} /> Calendar</button>
+          <button className="tab-btn disabled" type="button"><Sparkles size={16} /> Timeline</button>
+        </div>
+
+        <div className="project-toolbar">
+          <div className="inline-search wide">
+            <Search size={16} />
+            <input value={query} onChange={function (event) { setQuery(event.target.value) }} placeholder="Search tasks" />
+          </div>
+          <button className="filter-btn" type="button"><SlidersHorizontal size={16} /> Filter</button>
+          <a href="#new-task" className="primary-link-btn"><Plus size={16} /> Add task</a>
+        </div>
+
+        <div className="project-workspace-grid">
+          <section className="panel task-view-panel">
+            {viewMode === 'board' ? (
+              <TaskBoard tasks={filteredTasks} onMoveTask={moveTask} onDeleteTask={deleteTask} onSelectTask={setSelectedTask} />
+            ) : (
+              <div className="task-list-view">
+                <div className="task-list-header">
+                  <span>Task</span>
+                  <span>Status</span>
+                  <span>Priority</span>
+                  <span>Due date</span>
+                  <span></span>
+                </div>
+                {filteredTasks.map(function (task) {
+                  return (
+                    <div className="task-list-row" key={task.id} onClick={function () { setSelectedTask(task) }}>
+                      <div>
+                        <strong>{task.title}</strong>
+                        <p>{task.description || 'No description'}</p>
+                      </div>
+                      <span className={'status-pill status-' + task.status}>{getStatusLabel(task.status)}</span>
+                      <span className={'priority priority-' + task.priority}>{getPriorityLabel(task.priority)}</span>
+                      <span>{task.due_date || 'No date'}</span>
+                      <button className="delete-btn" onClick={function (event) { event.stopPropagation(); deleteTask(task.id) }} type="button"><Trash2 size={15} /></button>
+                    </div>
+                  )
+                })}
+                {filteredTasks.length === 0 ? <div className="empty-state-pro compact"><h3>No tasks found</h3><p>Create a task or change your search.</p></div> : null}
+              </div>
+            )}
+          </section>
+
+          <aside className="panel task-form-panel" id="new-task">
+            <form onSubmit={createTask}>
+              <h2>Add Task</h2>
+              <p>Create clear action items with status, priority and deadline.</p>
+              <label>Task title</label>
+              <input value={taskForm.title} onChange={function (event) { handleFieldChange('title', event.target.value) }} placeholder="Example: Setup GA4 conversion tracking" />
+              <label>Description</label>
+              <textarea value={taskForm.description} onChange={function (event) { handleFieldChange('description', event.target.value) }} placeholder="Task notes, scope, checklist" rows="4" />
+              <div className="two-col-form">
+                <div>
+                  <label>Status</label>
+                  <select value={taskForm.status} onChange={function (event) { handleFieldChange('status', event.target.value) }}>
+                    {taskStatuses.map(function (item) {
+                      return <option value={item.key} key={item.key}>{item.label}</option>
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label>Priority</label>
+                  <select value={taskForm.priority} onChange={function (event) { handleFieldChange('priority', event.target.value) }}>
+                    {priorities.map(function (item) {
+                      return <option value={item.key} key={item.key}>{item.label}</option>
+                    })}
+                  </select>
+                </div>
+              </div>
+              <label>Due date</label>
+              <input type="date" value={taskForm.due_date} onChange={function (event) { handleFieldChange('due_date', event.target.value) }} />
+              <button className="primary-btn" type="submit">Add Task</button>
+            </form>
+          </aside>
         </div>
       </div>
 
-      {error ? <div className="error-box" style={{ marginBottom: 18 }}>{error}</div> : null}
-
-      <div className="grid-two" style={{ gridTemplateColumns: '0.75fr 1.25fr' }}>
-        <aside className="card">
-          <h2>Create Task</h2>
-          <p className="muted">Add tasks, assign status, priority and due date.</p>
-
-          <form className="inline-form" onSubmit={handleCreateTask}>
-            <label>
-              Task title
-              <input
-                value={title}
-                onChange={function (event) {
-                  setTitle(event.target.value)
-                }}
-                placeholder="Example: Setup GA4 conversion tracking"
-                required
-              />
-            </label>
-
-            <label>
-              Description
-              <textarea
-                value={description}
-                onChange={function (event) {
-                  setDescription(event.target.value)
-                }}
-                placeholder="Task details"
-              />
-            </label>
-
-            <div className="form-grid">
-              <label>
-                Status
-                <select
-                  value={status}
-                  onChange={function (event) {
-                    setStatus(event.target.value)
-                  }}
-                >
-                  {taskStatuses.map(function (item) {
-                    return <option key={item.key} value={item.key}>{item.label}</option>
-                  })}
-                </select>
-              </label>
-
-              <label>
-                Priority
-                <select
-                  value={priority}
-                  onChange={function (event) {
-                    setPriority(event.target.value)
-                  }}
-                >
-                  {priorities.map(function (item) {
-                    return <option key={item.key} value={item.key}>{item.label}</option>
-                  })}
-                </select>
-              </label>
+      {selectedTask ? (
+        <div className="task-drawer-overlay" onClick={function () { setSelectedTask(null) }}>
+          <aside className="task-drawer" onClick={function (event) { event.stopPropagation() }}>
+            <button className="drawer-close" onClick={function () { setSelectedTask(null) }} type="button"><X size={18} /></button>
+            <div className="drawer-status"><CheckCircle2 size={18} /> {getStatusLabel(selectedTask.status)}</div>
+            <h2>{selectedTask.title}</h2>
+            <p>{selectedTask.description || 'No description added.'}</p>
+            <div className="drawer-meta-grid">
+              <div><span>Priority</span><strong>{getPriorityLabel(selectedTask.priority)}</strong></div>
+              <div><span>Due date</span><strong>{selectedTask.due_date || 'No date'}</strong></div>
+              <div><span>Project</span><strong>{project.name}</strong></div>
+              <div><span>Workspace</span><strong>{workspace ? workspace.name : 'Workspace'}</strong></div>
             </div>
-
-            <label>
-              Due date
-              <input
-                type="date"
-                value={dueDate}
-                onChange={function (event) {
-                  setDueDate(event.target.value)
-                }}
-              />
-            </label>
-
-            <button className="btn btn-primary" type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Create Task'}
-            </button>
-          </form>
-        </aside>
-
-        <section className="card" style={{ overflow: 'hidden' }}>
-          <div className="card-header">
-            <h2>Task Board</h2>
-            <span className="badge">{tasks.length} tasks</span>
-          </div>
-
-          {tasks.length === 0 ? (
-            <EmptyState title="No tasks yet" text="Create your first task and it will appear on the board." />
-          ) : (
-            <TaskBoard tasks={tasks} onMoveTask={handleMoveTask} onDeleteTask={handleDeleteTask} />
-          )}
-        </section>
-      </div>
+          </aside>
+        </div>
+      ) : null}
     </AppShell>
   )
 }
