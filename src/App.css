@@ -259,6 +259,8 @@
 .field-grid input,
 .field-grid select,
 .filter-controls select,
+.custom-field-cell input,
+.custom-field-cell select,
 .comments input,
 .create-modal input,
 .create-modal select,
@@ -463,6 +465,8 @@
 
 .filter-controls label,
 .field-grid label,
+.drawer-custom-fields label,
+.add-field-form label,
 .create-modal label {
   display: grid;
   gap: 7px;
@@ -776,7 +780,6 @@
 
 .task-card-footer span,
 .context-list span,
-.list-row span,
 .calendar-day button,
 .comments form {
   display: flex;
@@ -787,21 +790,19 @@
 .list-view {
   border: 1px solid var(--line);
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
   background: #ffffff;
 }
 
 .list-header,
 .list-row {
   display: grid;
-  grid-template-columns: minmax(300px, 1.6fr) 150px 210px 110px 110px;
   align-items: center;
-  gap: 14px;
-  min-width: 940px;
+  gap: 0;
+  min-width: 1320px;
 }
 
 .list-header {
-  padding: 12px 16px;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 800;
@@ -810,9 +811,20 @@
   border-bottom: 1px solid var(--line);
 }
 
+.list-header > span,
+.list-header > button,
+.list-row > span,
+.list-row > button,
+.custom-field-cell {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-right: 1px solid var(--line);
+}
+
 .list-row {
   width: 100%;
-  padding: 12px 16px;
   cursor: pointer;
   border-bottom: 1px solid var(--line);
 }
@@ -827,7 +839,80 @@
 }
 
 .list-task-name {
+  gap: 7px;
   font-weight: 700;
+  color: var(--text-strong);
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.add-column-button,
+.row-more-button {
+  justify-content: center;
+  color: var(--text-muted);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.custom-field-cell {
+  margin: 0;
+  cursor: default;
+}
+
+.custom-field-cell input,
+.custom-field-cell select {
+  min-height: 30px;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.custom-field-cell input:focus,
+.custom-field-cell select:focus {
+  border-color: var(--line-strong);
+  background: #ffffff;
+}
+
+.select-chip {
+  font-weight: 800;
+}
+
+.select-chip.cyan {
+  color: #155e75;
+  background: #cffafe;
+}
+
+.select-chip.green {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.select-chip.orange {
+  color: #9a3412;
+  background: #fed7aa;
+}
+
+.select-chip.blue {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.select-chip.red {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.select-chip.purple {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+
+.select-chip.gray {
+  color: #374151;
+  background: #e5e7eb;
 }
 
 .timeline-view,
@@ -1008,6 +1093,8 @@
 
 .field-grid input,
 .field-grid select,
+.drawer-custom-fields input,
+.drawer-custom-fields select,
 .create-modal input,
 .create-modal select,
 .create-modal textarea {
@@ -1036,6 +1123,23 @@
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.drawer-custom-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-custom-fields .custom-field-cell {
+  min-height: 0;
+  padding: 0;
+  border-right: 0;
+}
+
+.drawer-custom-fields .custom-field-cell input,
+.drawer-custom-fields .custom-field-cell select {
+  border-color: var(--line);
+  background: #ffffff;
 }
 
 .subtask-list button {
@@ -1117,6 +1221,10 @@
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.32);
 }
 
+.customize-modal {
+  width: min(760px, 100%);
+}
+
 .modal-title {
   justify-content: space-between;
   gap: 14px;
@@ -1137,6 +1245,46 @@
 .modal-actions {
   justify-content: flex-end;
   gap: 8px;
+}
+
+.field-manager {
+  display: grid;
+  gap: 8px;
+}
+
+.field-manager-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) minmax(160px, 0.6fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfbfc;
+}
+
+.field-manager-row input {
+  width: 16px;
+  height: 16px;
+}
+
+.field-manager-row strong,
+.field-manager-row small {
+  display: block;
+}
+
+.field-manager-row small,
+.field-manager-row em {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.add-field-form {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 button,

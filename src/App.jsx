@@ -115,7 +115,8 @@ function getAvatar(memberId) {
 }
 
 function App() {
-  const [tasks, setTasks] = useState(loadSavedTasks)
+  const [tasks, setTasks] = useState(() => loadSavedState().tasks)
+  const [customFields, setCustomFields] = useState(() => loadSavedState().customFields)
   const [activeSection, setActiveSection] = useState('projects')
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id)
   const [activeView, setActiveView] = useState('board')
@@ -124,10 +125,11 @@ function App() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [showCreateTask, setShowCreateTask] = useState(false)
+  const [showCustomize, setShowCustomize] = useState(false)
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks }))
-  }, [tasks])
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks, customFields }))
+  }, [tasks, customFields])
 
   const activeProject = projects.find((project) => project.id === activeProjectId)
   const projectTasks = tasks.filter((task) => task.projectId === activeProjectId)
@@ -142,6 +144,7 @@ function App() {
           task.status,
           getAvatar(task.assignee).name,
           ...task.tags,
+          ...Object.values(task.fields ?? {}),
         ]
           .join(' ')
           .toLowerCase()
@@ -197,6 +200,7 @@ function App() {
       description: taskInput.description,
       subtasks: [],
       comments: [],
+      fields: customFields.reduce((fields, field) => ({ ...fields, [field.id]: '' }), {}),
     }
 
     setTasks((currentTasks) => [newTask, ...currentTasks])
@@ -235,6 +239,71 @@ function App() {
     )
   }
 
+  function updateCustomFieldValue(taskId, fieldId, value) {
+    setTasks((currentTasks) =>
+      currentTasks.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              fields: {
+                ...(task.fields ?? {}),
+                [fieldId]: value,
+              },
+            }
+          : task,
+      ),
+    )
+  }
+
+  function addCustomField(fieldInput) {
+    const name = fieldInput.name.trim()
+    if (!name) return
+
+    const baseId = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    const existingIds = new Set(customFields.map((field) => field.id))
+    let id = baseId || `field-${Date.now()}`
+    let suffix = 2
+
+    while (existingIds.has(id)) {
+      id = `${baseId}-${suffix}`
+      suffix += 1
+    }
+
+    const options =
+      fieldInput.type === 'select'
+        ? fieldInput.options
+            .split(',')
+            .map((option) => option.trim())
+            .filter(Boolean)
+            .map((label, index) => ({
+              label,
+              color: ['cyan', 'green', 'orange', 'blue', 'red', 'purple'][index % 6],
+            }))
+        : []
+
+    setCustomFields((currentFields) => [
+      ...currentFields,
+      {
+        id,
+        name,
+        type: fieldInput.type,
+        visible: true,
+        options,
+      },
+    ])
+  }
+
+  function toggleCustomField(fieldId) {
+    setCustomFields((currentFields) =>
+      currentFields.map((field) =>
+        field.id === fieldId ? { ...field, visible: field.visible === false } : field,
+      ),
+    )
+  }
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -268,6 +337,7 @@ function App() {
               taskCount={projectTasks.length}
               activeView={activeView}
               onViewChange={setActiveView}
+              onCustomize={() => setShowCustomize(true)}
             />
 
             <FilterBar
@@ -288,7 +358,14 @@ function App() {
             )}
 
             {activeView === 'list' && (
-              <ListView tasks={filteredTasks} onSelectTask={setSelectedTaskId} onUpdateTask={updateTask} />
+              <ListView
+                customFields={customFields}
+                tasks={filteredTasks}
+                onOpenCustomize={() => setShowCustomize(true)}
+                onSelectTask={setSelectedTaskId}
+                onUpdateCustomField={updateCustomFieldValue}
+                onUpdateTask={updateTask}
+              />
             )}
 
             {activeView === 'timeline' && <TimelineView tasks={filteredTasks} onSelectTask={setSelectedTaskId} />}
@@ -301,8 +378,11 @@ function App() {
           <WorkspaceSection
             activeSection={activeSection}
             searchTerm={searchTerm}
+            customFields={customFields}
             tasks={tasks}
+            onOpenCustomize={() => setShowCustomize(true)}
             onSelectTask={setSelectedTaskId}
+            onUpdateCustomField={updateCustomFieldValue}
             onUpdateTask={updateTask}
           />
         )}
@@ -311,7 +391,9 @@ function App() {
       <TaskDrawer
         key={selectedTask?.id ?? 'empty-task'}
         task={selectedTask}
+        customFields={customFields}
         onClose={() => setSelectedTaskId(null)}
+        onUpdateCustomField={updateCustomFieldValue}
         onUpdateTask={updateTask}
         onAddComment={addComment}
         onToggleSubtask={toggleSubtask}
@@ -322,6 +404,15 @@ function App() {
           onClose={() => setShowCreateTask(false)}
           onCreateTask={addTask}
           defaultProject={activeProject}
+        />
+      )}
+
+      {showCustomize && (
+        <CustomizeModal
+          customFields={customFields}
+          onAddField={addCustomField}
+          onClose={() => setShowCustomize(false)}
+          onToggleField={toggleCustomField}
         />
       )}
     </div>
@@ -432,7 +523,16 @@ function Sidebar({
   )
 }
 
-function WorkspaceSection({ activeSection, searchTerm, tasks, onSelectTask, onUpdateTask }) {
+function WorkspaceSection({
+  activeSection,
+  searchTerm,
+  customFields,
+  tasks,
+  onOpenCustomize,
+  onSelectTask,
+  onUpdateCustomField,
+  onUpdateTask,
+}) {
   const normalizedSearch = searchTerm.toLowerCase()
   const visibleTasks = tasks.filter((task) =>
     [task.title, task.description, task.priority, task.status, getAvatar(task.assignee).name, ...task.tags]
@@ -468,7 +568,14 @@ function WorkspaceSection({ activeSection, searchTerm, tasks, onSelectTask, onUp
           <Metric label="In review" value={reviewTasks.filter((task) => task.assignee === 'mira').length} />
           <Metric label="Active" value={myTasks.filter((task) => task.status !== 'done').length} tone="success" />
         </div>
-        <ListView tasks={myTasks} onSelectTask={onSelectTask} onUpdateTask={onUpdateTask} />
+        <ListView
+          customFields={customFields}
+          tasks={myTasks}
+          onOpenCustomize={onOpenCustomize}
+          onSelectTask={onSelectTask}
+          onUpdateCustomField={onUpdateCustomField}
+          onUpdateTask={onUpdateTask}
+        />
       </section>
     )
   }
@@ -640,6 +747,7 @@ function ProjectHeader({
   taskCount,
   activeView,
   onViewChange,
+  onCustomize,
 }) {
   const owner = getAvatar(activeProject.owner)
 
@@ -663,6 +771,10 @@ function ProjectHeader({
           </div>
           <button className="ghost-button compact" type="button">
             Share
+          </button>
+          <button className="ghost-button compact" type="button" onClick={onCustomize}>
+            <SlidersHorizontal size={16} />
+            Customize
           </button>
         </div>
       </div>
@@ -823,23 +935,41 @@ function TaskCard({ task, isSelected, onSelectTask }) {
   )
 }
 
-function ListView({ tasks, onSelectTask, onUpdateTask }) {
+function ListView({
+  customFields,
+  tasks,
+  onOpenCustomize,
+  onSelectTask,
+  onUpdateCustomField,
+  onUpdateTask,
+}) {
+  const visibleFields = customFields.filter((field) => field.visible !== false)
+  const gridTemplateColumns = `minmax(300px, 1.8fr) 150px 200px 120px 120px ${visibleFields
+    .map(() => '170px')
+    .join(' ')} 52px`
+
   return (
-    <section className="list-view">
-      <div className="list-header">
+    <section className="list-view custom-list-view">
+      <div className="list-header" style={{ gridTemplateColumns }}>
         <span>Task</span>
         <span>Status</span>
         <span>Owner</span>
         <span>Due</span>
         <span>Priority</span>
+        {visibleFields.map((field) => (
+          <span key={field.id}>{field.name}</span>
+        ))}
+        <button className="add-column-button" type="button" onClick={onOpenCustomize}>
+          <Plus size={16} />
+        </button>
       </div>
 
       {tasks.map((task) => (
-        <button className="list-row" key={task.id} type="button" onClick={() => onSelectTask(task.id)}>
-          <span className="list-task-name">
+        <div className="list-row" key={task.id} style={{ gridTemplateColumns }} onClick={() => onSelectTask(task.id)}>
+          <button className="list-task-name" type="button" onClick={() => onSelectTask(task.id)}>
             <Circle size={16} />
             {task.title}
-          </span>
+          </button>
           <span onClick={(event) => event.stopPropagation()}>
             <select value={task.status} onChange={(event) => onUpdateTask(task.id, { status: event.target.value })}>
               {statuses.map((status) => (
@@ -855,9 +985,70 @@ function ListView({ tasks, onSelectTask, onUpdateTask }) {
           </span>
           <span>{formatDate(task.due)}</span>
           <span className={`priority-pill ${priorityClass[task.priority]}`}>{task.priority}</span>
-        </button>
+          {visibleFields.map((field) => (
+            <CustomFieldInput
+              field={field}
+              key={field.id}
+              value={task.fields?.[field.id] ?? ''}
+              onChange={(value) => onUpdateCustomField(task.id, field.id, value)}
+            />
+          ))}
+          <button className="row-more-button" type="button" onClick={(event) => event.stopPropagation()}>
+            <MoreHorizontal size={17} />
+          </button>
+        </div>
       ))}
     </section>
+  )
+}
+
+function CustomFieldInput({ field, value, onChange }) {
+  if (field.type === 'select') {
+    const option = field.options.find((item) => item.label === value)
+
+    return (
+      <div className="custom-field-cell" onClick={(event) => event.stopPropagation()}>
+        <select
+          className={option ? `select-chip ${option.color}` : 'select-chip'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">Empty</option>
+          {field.options.map((item) => (
+            <option key={item.label} value={item.label}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
+  if (field.type === 'date') {
+    return (
+      <div className="custom-field-cell" onClick={(event) => event.stopPropagation()}>
+        <input type="date" value={value} onChange={(event) => onChange(event.target.value)} />
+      </div>
+    )
+  }
+
+  if (field.type === 'number') {
+    return (
+      <div className="custom-field-cell" onClick={(event) => event.stopPropagation()}>
+        <input type="number" value={value} onChange={(event) => onChange(event.target.value)} placeholder="0" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="custom-field-cell" onClick={(event) => event.stopPropagation()}>
+      <input
+        type={field.type === 'url' ? 'url' : 'text'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={field.type === 'url' ? 'https://...' : 'Empty'}
+      />
+    </div>
   )
 }
 
@@ -966,7 +1157,15 @@ function WorkloadView({ tasks }) {
   )
 }
 
-function TaskDrawer({ task, onClose, onUpdateTask, onAddComment, onToggleSubtask }) {
+function TaskDrawer({
+  task,
+  customFields,
+  onClose,
+  onUpdateCustomField,
+  onUpdateTask,
+  onAddComment,
+  onToggleSubtask,
+}) {
   const [comment, setComment] = useState('')
 
   if (!task) {
@@ -1029,6 +1228,27 @@ function TaskDrawer({ task, onClose, onUpdateTask, onAddComment, onToggleSubtask
             <option value="Low">Low</option>
           </select>
         </label>
+      </div>
+
+      <div className="drawer-section">
+        <div className="drawer-section-title">
+          <strong>Custom fields</strong>
+          <span>{customFields.filter((field) => field.visible !== false).length} shown</span>
+        </div>
+        <div className="drawer-custom-fields">
+          {customFields
+            .filter((field) => field.visible !== false)
+            .map((field) => (
+              <label key={field.id}>
+                {field.name}
+                <CustomFieldInput
+                  field={field}
+                  value={task.fields?.[field.id] ?? ''}
+                  onChange={(value) => onUpdateCustomField(task.id, field.id, value)}
+                />
+              </label>
+            ))}
+        </div>
       </div>
 
       <div className="drawer-section">
@@ -1183,7 +1403,7 @@ function CreateTaskModal({ onClose, onCreateTask }) {
                 <option key={status.id} value={status.id}>
                   {status.name}
                 </option>
-              ))}
+            ))}
             </select>
           </label>
           <label>
@@ -1201,7 +1421,7 @@ function CreateTaskModal({ onClose, onCreateTask }) {
                 <option key={member.id} value={member.id}>
                   {member.name}
                 </option>
-              ))}
+            ))}
             </select>
           </label>
           <label>
@@ -1238,6 +1458,109 @@ function CreateTaskModal({ onClose, onCreateTask }) {
           </button>
         </div>
       </form>
+    </div>
+  )
+}
+
+function CustomizeModal({ customFields, onAddField, onClose, onToggleField }) {
+  const [fieldInput, setFieldInput] = useState({
+    name: '',
+    type: 'select',
+    options: 'In progress, Waiting for End, Ended With Review',
+  })
+
+  function updateField(field, value) {
+    setFieldInput((current) => ({ ...current, [field]: value }))
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="create-modal customize-modal" role="dialog" aria-modal="true" aria-label="Customize fields">
+        <div className="modal-title">
+          <div>
+            <span>Project customization</span>
+            <h2>Custom fields</h2>
+          </div>
+          <button className="icon-button" aria-label="Close modal" type="button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="field-manager">
+          {customFields.map((field) => (
+            <label className="field-manager-row" key={field.id}>
+              <input
+                checked={field.visible !== false}
+                type="checkbox"
+                onChange={() => onToggleField(field.id)}
+              />
+              <span>
+                <strong>{field.name}</strong>
+                <small>{field.type}</small>
+              </span>
+            {field.type === 'select' && (
+              <em>{field.options.map((option) => option.label).slice(0, 3).join(', ')}</em>
+            )}
+            </label>
+          ))}
+        </div>
+
+        <form
+          className="add-field-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            onAddField(fieldInput)
+            setFieldInput({
+              name: '',
+              type: 'select',
+              options: 'In progress, Waiting for End, Ended With Review',
+            })
+          }}
+        >
+          <div className="drawer-section-title">
+            <strong>Add a field</strong>
+            <span>Shows as a new List column</span>
+          </div>
+          <div className="modal-grid">
+            <label>
+              Field name
+              <input
+                placeholder="Contract value"
+                value={fieldInput.name}
+                onChange={(event) => updateField('name', event.target.value)}
+              />
+            </label>
+            <label>
+              Field type
+              <select value={fieldInput.type} onChange={(event) => updateField('type', event.target.value)}>
+                <option value="select">Dropdown</option>
+                <option value="text">Text</option>
+                <option value="url">URL</option>
+                <option value="date">Date</option>
+                <option value="number">Number</option>
+              </select>
+            </label>
+          </div>
+          {fieldInput.type === 'select' && (
+            <label>
+              Dropdown options
+              <input
+                value={fieldInput.options}
+                onChange={(event) => updateField('options', event.target.value)}
+              />
+            </label>
+          )}
+          <div className="modal-actions">
+            <button className="ghost-button" type="button" onClick={onClose}>
+              Done
+            </button>
+            <button className="primary-button" type="submit">
+              <Plus size={18} />
+              Add field
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   )
 }
