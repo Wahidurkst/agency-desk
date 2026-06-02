@@ -17,13 +17,21 @@ import {
   PanelRightOpen,
   Plus,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Target,
   Users,
   X,
 } from 'lucide-react'
 import './App.css'
-import { initialTasks, projects, statuses, teammates } from './data'
+import {
+  initialCustomFields,
+  initialCustomFieldValues,
+  initialTasks,
+  projects,
+  statuses,
+  teammates,
+} from './data'
 
 const STORAGE_KEY = 'agency-desk-state-v1'
 
@@ -47,15 +55,46 @@ const priorityClass = {
   Low: 'success',
 }
 
-function loadSavedTasks() {
+function normalizeTasks(taskList) {
+  return taskList.map((task) => ({
+    ...task,
+    fields: {
+      ...(initialCustomFieldValues[task.id] ?? {}),
+      ...(task.fields ?? {}),
+    },
+  }))
+}
+
+function normalizeCustomFields(fieldList = initialCustomFields) {
+  const savedFieldIds = new Set(fieldList.map((field) => field.id))
+  return [
+    ...fieldList,
+    ...initialCustomFields.filter((field) => !savedFieldIds.has(field.id)),
+  ]
+}
+
+function loadSavedState() {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY)
-    if (!saved) return initialTasks
+    if (!saved) {
+      return {
+        tasks: normalizeTasks(initialTasks),
+        customFields: initialCustomFields,
+      }
+    }
 
     const parsed = JSON.parse(saved)
-    return Array.isArray(parsed.tasks) ? parsed.tasks : initialTasks
+    return {
+      tasks: normalizeTasks(Array.isArray(parsed.tasks) ? parsed.tasks : initialTasks),
+      customFields: normalizeCustomFields(
+        Array.isArray(parsed.customFields) ? parsed.customFields : initialCustomFields,
+      ),
+    }
   } catch {
-    return initialTasks
+    return {
+      tasks: normalizeTasks(initialTasks),
+      customFields: initialCustomFields,
+    }
   }
 }
 
@@ -77,6 +116,7 @@ function getAvatar(memberId) {
 
 function App() {
   const [tasks, setTasks] = useState(loadSavedTasks)
+  const [activeSection, setActiveSection] = useState('projects')
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id)
   const [activeView, setActiveView] = useState('board')
   const [selectedTaskId, setSelectedTaskId] = useState(initialTasks[1].id)
@@ -115,7 +155,9 @@ function App() {
       .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
   }, [projectTasks, searchTerm, statusFilter, priorityFilter])
 
-  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? filteredTasks[0]
+  const selectedTask =
+    tasks.find((task) => task.id === selectedTaskId) ??
+    (activeSection === 'projects' ? filteredTasks[0] : null)
   const completedCount = projectTasks.filter((task) => task.status === 'done').length
   const progress = projectTasks.length ? Math.round((completedCount / projectTasks.length) * 100) : 0
   const overdueCount = projectTasks.filter(
@@ -196,10 +238,14 @@ function App() {
   return (
     <div className="app-shell">
       <Sidebar
+        activeSection={activeSection}
         activeProjectId={activeProjectId}
         progress={progress}
         tasks={tasks}
+        onSectionChange={setActiveSection}
+        onCreateTask={() => setShowCreateTask(true)}
         onProjectChange={(projectId) => {
+          setActiveSection('projects')
           setActiveProjectId(projectId)
           setSelectedTaskId(tasks.find((task) => task.projectId === projectId)?.id)
         }}
@@ -212,42 +258,54 @@ function App() {
           onCreateTask={() => setShowCreateTask(true)}
         />
 
-        <ProjectHeader
-          activeProject={activeProject}
-          completedCount={completedCount}
-          overdueCount={overdueCount}
-          progress={progress}
-          taskCount={projectTasks.length}
-          activeView={activeView}
-          onViewChange={setActiveView}
-        />
+        {activeSection === 'projects' ? (
+          <>
+            <ProjectHeader
+              activeProject={activeProject}
+              completedCount={completedCount}
+              overdueCount={overdueCount}
+              progress={progress}
+              taskCount={projectTasks.length}
+              activeView={activeView}
+              onViewChange={setActiveView}
+            />
 
-        <FilterBar
-          statusFilter={statusFilter}
-          priorityFilter={priorityFilter}
-          onStatusFilterChange={setStatusFilter}
-          onPriorityFilterChange={setPriorityFilter}
-          resultCount={filteredTasks.length}
-        />
+            <FilterBar
+              statusFilter={statusFilter}
+              priorityFilter={priorityFilter}
+              onStatusFilterChange={setStatusFilter}
+              onPriorityFilterChange={setPriorityFilter}
+              resultCount={filteredTasks.length}
+            />
 
-        {activeView === 'board' && (
-          <BoardView
-            tasks={filteredTasks}
-            selectedTaskId={selectedTask?.id}
+            {activeView === 'board' && (
+              <BoardView
+                tasks={filteredTasks}
+                selectedTaskId={selectedTask?.id}
+                onSelectTask={setSelectedTaskId}
+                onMoveTask={moveTask}
+              />
+            )}
+
+            {activeView === 'list' && (
+              <ListView tasks={filteredTasks} onSelectTask={setSelectedTaskId} onUpdateTask={updateTask} />
+            )}
+
+            {activeView === 'timeline' && <TimelineView tasks={filteredTasks} onSelectTask={setSelectedTaskId} />}
+
+            {activeView === 'calendar' && <CalendarView tasks={filteredTasks} onSelectTask={setSelectedTaskId} />}
+
+            {activeView === 'workload' && <WorkloadView tasks={projectTasks} />}
+          </>
+        ) : (
+          <WorkspaceSection
+            activeSection={activeSection}
+            searchTerm={searchTerm}
+            tasks={tasks}
             onSelectTask={setSelectedTaskId}
-            onMoveTask={moveTask}
+            onUpdateTask={updateTask}
           />
         )}
-
-        {activeView === 'list' && (
-          <ListView tasks={filteredTasks} onSelectTask={setSelectedTaskId} onUpdateTask={updateTask} />
-        )}
-
-        {activeView === 'timeline' && <TimelineView tasks={filteredTasks} onSelectTask={setSelectedTaskId} />}
-
-        {activeView === 'calendar' && <CalendarView tasks={filteredTasks} onSelectTask={setSelectedTaskId} />}
-
-        {activeView === 'workload' && <WorkloadView tasks={projectTasks} />}
       </main>
 
       <TaskDrawer
@@ -270,7 +328,18 @@ function App() {
   )
 }
 
-function Sidebar({ activeProjectId, progress, tasks, onProjectChange }) {
+function Sidebar({
+  activeSection,
+  activeProjectId,
+  progress,
+  tasks,
+  onSectionChange,
+  onCreateTask,
+  onProjectChange,
+}) {
+  const inboxCount = tasks.reduce((total, task) => total + task.comments.length, 0)
+  const myTaskCount = tasks.filter((task) => task.assignee === 'mira' && task.status !== 'done').length
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -284,30 +353,48 @@ function Sidebar({ activeProjectId, progress, tasks, onProjectChange }) {
       </div>
 
       <nav className="nav-group" aria-label="Workspace">
-        <button className="nav-item active" type="button">
+        <button
+          className={`nav-item ${activeSection === 'inbox' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onSectionChange('inbox')}
+        >
           <Inbox size={18} />
           Inbox
-          <span className="nav-count">12</span>
+          <span className="nav-count">{inboxCount}</span>
         </button>
-        <button className="nav-item" type="button">
+        <button
+          className={`nav-item ${activeSection === 'my-tasks' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onSectionChange('my-tasks')}
+        >
           <Check size={18} />
           My tasks
-          <span className="nav-count">8</span>
+          <span className="nav-count">{myTaskCount}</span>
         </button>
-        <button className="nav-item" type="button">
+        <button
+          className={`nav-item ${activeSection === 'goals' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onSectionChange('goals')}
+        >
           <Target size={18} />
           Goals
         </button>
-        <button className="nav-item" type="button">
+        <button
+          className={`nav-item ${activeSection === 'team' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onSectionChange('team')}
+        >
           <Users size={18} />
-          Teams
+          Team
         </button>
       </nav>
 
       <div className="sidebar-section">
         <div className="section-label">
           <span>Projects</span>
-          <Plus size={16} />
+          <button className="section-icon-button" aria-label="Create task" type="button" onClick={onCreateTask}>
+            <Plus size={16} />
+          </button>
         </div>
         <div className="project-list">
           {projects.map((project) => {
@@ -315,7 +402,9 @@ function Sidebar({ activeProjectId, progress, tasks, onProjectChange }) {
 
             return (
               <button
-                className={`project-pill ${activeProjectId === project.id ? 'selected' : ''}`}
+                className={`project-pill ${
+                  activeSection === 'projects' && activeProjectId === project.id ? 'selected' : ''
+                }`}
                 key={project.id}
                 type="button"
                 onClick={() => onProjectChange(project.id)}
@@ -340,6 +429,175 @@ function Sidebar({ activeProjectId, progress, tasks, onProjectChange }) {
         <span>Keep approvals moving before the client checkpoint.</span>
       </div>
     </aside>
+  )
+}
+
+function WorkspaceSection({ activeSection, searchTerm, tasks, onSelectTask, onUpdateTask }) {
+  const normalizedSearch = searchTerm.toLowerCase()
+  const visibleTasks = tasks.filter((task) =>
+    [task.title, task.description, task.priority, task.status, getAvatar(task.assignee).name, ...task.tags]
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedSearch),
+  )
+  const myTasks = visibleTasks.filter((task) => task.assignee === 'mira')
+  const reviewTasks = visibleTasks.filter((task) => task.status === 'review')
+  const activeTasks = tasks.filter((task) => task.status !== 'done')
+  const comments = tasks.flatMap((task) =>
+    task.comments.map((comment) => ({
+      ...comment,
+      taskId: task.id,
+      taskTitle: task.title,
+      project: projects.find((project) => project.id === task.projectId),
+    })),
+  )
+  const doneTasks = tasks.filter((task) => task.status === 'done').length
+  const allProgress = tasks.length ? Math.round((doneTasks / tasks.length) * 100) : 0
+
+  if (activeSection === 'my-tasks') {
+    return (
+      <section className="section-page">
+        <SectionHero
+          icon={Check}
+          kicker="Personal queue"
+          title="My tasks"
+          description="Everything assigned to Mira, grouped into one focused action list."
+        />
+        <div className="section-metrics">
+          <Metric label="Assigned" value={myTasks.length} />
+          <Metric label="In review" value={reviewTasks.filter((task) => task.assignee === 'mira').length} />
+          <Metric label="Active" value={myTasks.filter((task) => task.status !== 'done').length} tone="success" />
+        </div>
+        <ListView tasks={myTasks} onSelectTask={onSelectTask} onUpdateTask={onUpdateTask} />
+      </section>
+    )
+  }
+
+  if (activeSection === 'inbox') {
+    return (
+      <section className="section-page">
+        <SectionHero
+          icon={Inbox}
+          kicker="Notifications"
+          title="Inbox"
+          description="Recent comments, review requests, and due-date signals from all agency projects."
+        />
+        <div className="activity-feed">
+          {comments.map((comment) => {
+            const author = getAvatar(comment.author)
+
+            return (
+              <button className="activity-card" key={comment.id} type="button" onClick={() => onSelectTask(comment.taskId)}>
+                <Avatar member={author} />
+                <span>
+                  <strong>{author.name}</strong> commented on <strong>{comment.taskTitle}</strong>
+                  <small>
+                    {comment.project?.name} · {comment.time}
+                  </small>
+                </span>
+                <em>{comment.text}</em>
+              </button>
+            )
+          })}
+          {reviewTasks.map((task) => (
+            <button className="activity-card" key={`review-${task.id}`} type="button" onClick={() => onSelectTask(task.id)}>
+              <span className="activity-icon">
+                <Check size={17} />
+              </span>
+              <span>
+                <strong>{task.title}</strong> is waiting for review
+                <small>{projects.find((project) => project.id === task.projectId)?.name}</small>
+              </span>
+              <em>Due {formatDate(task.due)}</em>
+            </button>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  if (activeSection === 'goals') {
+    return (
+      <section className="section-page">
+        <SectionHero
+          icon={Target}
+          kicker="Agency goals"
+          title="Goals"
+          description="Track delivery health, approval flow, and client-work velocity across every project."
+        />
+        <div className="goal-grid">
+          <GoalCard label="Complete active delivery" value={allProgress} detail={`${doneTasks}/${tasks.length} tasks done`} />
+          <GoalCard
+            label="Keep review queue light"
+            value={Math.max(0, 100 - reviewTasks.length * 18)}
+            detail={`${reviewTasks.length} items in review`}
+          />
+          <GoalCard
+            label="Protect team capacity"
+            value={Math.max(0, 100 - activeTasks.length * 6)}
+            detail={`${activeTasks.length} active assignments`}
+          />
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="section-page">
+      <SectionHero
+        icon={Users}
+        kicker="People"
+        title="Team"
+        description="See teammates, roles, current load, and the tasks each person is carrying."
+      />
+      <div className="team-grid">
+        {teammates.map((member) => {
+          const assigned = tasks.filter((task) => task.assignee === member.id && task.status !== 'done')
+
+          return (
+            <article className="team-card" key={member.id}>
+              <Avatar member={member} />
+              <div>
+                <strong>{member.name}</strong>
+                <span>{member.role}</span>
+              </div>
+              <em>{assigned.length} active</em>
+            </article>
+          )
+        })}
+      </div>
+      <WorkloadView tasks={tasks} />
+    </section>
+  )
+}
+
+function SectionHero({ icon: Icon, kicker, title, description }) {
+  return (
+    <section className="section-hero">
+      <div className="section-hero-icon">
+        <Icon size={22} />
+      </div>
+      <div>
+        <span>{kicker}</span>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+    </section>
+  )
+}
+
+function GoalCard({ label, value, detail }) {
+  return (
+    <article className="goal-card">
+      <div>
+        <span>{label}</span>
+        <strong>{value}%</strong>
+      </div>
+      <div className="progress-line">
+        <span style={{ width: `${value}%` }} />
+      </div>
+      <p>{detail}</p>
+    </article>
   )
 }
 

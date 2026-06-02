@@ -157,6 +157,25 @@
   text-transform: uppercase;
 }
 
+.section-icon-button {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.section-icon-button:hover {
+  color: var(--text-strong);
+  border-color: var(--line);
+  background: #ffffff;
+}
+
 .project-pill {
   grid-template-columns: 12px 1fr auto;
   padding: 11px;
@@ -457,6 +476,149 @@
   min-width: 132px;
   height: 38px;
   padding: 0 32px 0 10px;
+}
+
+.section-page {
+  display: grid;
+  gap: 18px;
+}
+
+.section-hero {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(17, 24, 39, 0.05);
+}
+
+.section-hero-icon,
+.activity-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #111827;
+  background: #fef3c7;
+}
+
+.section-hero span,
+.goal-card span,
+.team-card span,
+.activity-card small {
+  color: var(--text-muted);
+}
+
+.section-hero span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section-hero h1 {
+  margin: 4px 0 6px;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.section-hero p,
+.goal-card p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.section-metrics,
+.goal-grid,
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.activity-feed {
+  display: grid;
+  gap: 10px;
+}
+
+.activity-card,
+.team-card,
+.goal-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.04);
+}
+
+.activity-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) minmax(160px, 0.42fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-card strong,
+.activity-card small {
+  display: inline;
+}
+
+.activity-card small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.activity-card em {
+  color: var(--text-muted);
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.goal-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.goal-card > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.goal-card strong {
+  font-size: 30px;
+}
+
+.team-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+}
+
+.team-card em {
+  min-width: 74px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #166534;
+  background: #dcfce7;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: center;
 }
 
 .board {
